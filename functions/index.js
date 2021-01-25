@@ -1,17 +1,15 @@
 const functions = require("firebase-functions");
-const admin = require('firebase-admin');
 
 const app = require('express')();
 
-admin.initializeApp();
+const { getAllBudcalls } = require('./handlers/budcalls');
 
 
-var firebaseConfig = require('./firebaseConfig');
+//var firebaseConfig = require('./firebaseConfig');
 
 const firebase = require('firebase');
 firebase.initializeApp(firebaseConfig);
 
-const db = admin.firestore();
 
 
 
@@ -19,56 +17,41 @@ const db = admin.firestore();
 // // https://firebase.google.com/docs/functions/write-firebase-functions
 //
 
-app.get('/budcalls', (req, res) => {
-        db
-            .collection('budcalls')
-            .orderBy('createdAt', 'desc')
-            .get()
-            .then((data) => {
-                let budcalls = [];
-                data.forEach((doc) => {
-                    budcalls.push({
-                        budcallId: doc.id,
-                        body: doc.data().body,
-                        userHandle: doc.data().userHandle,
-                        createdAt: doc.data().createdAt,
-                        commentCount: doc.data().commentCount,
-                        likeCount: doc.data().likeCount
-                    });
-                });
-                return res.json(budcalls);
-            })
-            .catch((err) => console.error(err));
+//Get all budcalls route
+app.get('/budcalls', getAllBudcalls);
+
+
+
+const FBAuth = (req, res, next) => {
+    let idToken;
+    if(req.headers.authorization && req.headers.authorization.startsWith('Bearer ')){
+        idToken = req.headers.authorization.split('Bearer ')[1];
+    }
+    else{
+        console.error('No token found');
+        return res.status(403).json({error: 'Unauthorized'});
     }
 
-);
-
-app.post('/budcall', (req, res) => {
-
-    const newBudcall = {
-        body: req.body.body,
-        userHandle: req.body.userHandle,
-        //location: new firebase.firestore.GeoPoint(latitude, longitude),  
-        createdAt: new Date().toISOString()
-        // dateSet: admin.firestore.Timestamp.fromDate(new Date())
-    };
-
-    db
-        .collection('budcalls')
-        .add(newBudcall)
-        .then(doc => {
-            res.json({
-                message: `document ${doc.id} created successfully`
-            });
-        })
+    admin.auth().verifyIdToken(idToken).then(decodedToken => {
+        req.user = decodedToken;
+        console.log(decodedToken);
+        return db.collection('users').where('userId', '==', req.user.uid).limit(1).get();
+    }).then(data => {
+        req.user.handle = data.docs[0].data().handle;
+        return next();
+    }
+        )
         .catch(err => {
-            res.status(500).json({
-                error: 'something went wrong'
-            });
-            console.error(err);
-        });
-});
+            console.error('Error while verifying token', err);
+            return res.status(403).json(err);
+        })
+}
 
+
+//Create a new budcall
+app.post('/budcall', FBAuth, postOneBudcall);
+
+//Determine whether email input from user is valid
 const isEmail = (email) => {
     const emailRegEx = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
 
@@ -80,11 +63,13 @@ else {
 }
 }
 
+//Determine whether a string is empty
 const isEmpty = (string) => {
     if (string.trim() === '') return true;
     else return false;
 }
 
+//Sign up new user
 app.post('/signup', (req, res) => {
     const newUser = {
         email: req.body.email,
@@ -169,5 +154,44 @@ if(Object.keys(errors).length > 0){
         });
 });
 
+
+//Login
+app.post('/login', (req,res) => {
+    const user = {
+        email: req.body.email,
+        password: req.body.password
+    };
+
+    let errors = {};
+
+    if(isEmpty(user.email)){
+        errors.email = 'Must not be empty';
+    }
+    if(isEmpty(user.password)){
+        errors.password = 'Must not be empty';
+    }
+
+    if(Object.keys(errors).length > 0){
+        return res.status(400).json(errors);
+    }
+
+    firebase.auth().signInWithEmailAndPassword(user.email, user.password)
+    .then(data => {
+        return data.user.getIdToken();
+    })
+    .then(token => {
+        return res.json({token});
+    })
+    .catch(err => {
+        console.error(err);
+        if(err.code === 'auth/wrong-password'){
+            return res.status(403).json({general: 'Wrong credentials, please try again'})
+        }
+        else{
+            return res.status(500).json({error: err.code});
+
+        }
+    });
+});
 
 exports.api = functions.https.onRequest(app);
