@@ -2,8 +2,8 @@ const functions = require("firebase-functions");
 
 const app = require('express')();
 
-const { getAllBudcalls, postOneBudcall } = require('./handlers/budcalls');
-const { signup, login, uploadImage, addUserDetails } = require('./handlers/users');
+const { getAllBudcalls, postOneBudcall, getBudcall, commentOnBudcall } = require('./handlers/budcalls');
+const { signup, login, uploadImage, addUserDetails, getAuthenticatedUser } = require('./handlers/users');
 
 const FBAuth = require('./util/fbAuth');
 
@@ -15,11 +15,22 @@ const FBAuth = require('./util/fbAuth');
 //budcalls routes
 app.get('/budcalls', getAllBudcalls);
 app.post('/budcall', FBAuth, postOneBudcall);
+app.get('/budcall/:budcallId', getBudcall);
+//TODO: Delete budcall
+
+//TODO: Like budcall
+
+//TODO: Unlike a budcall
+
+app.post('/budcall/:budcallId/comment', FBAuth, commentOnScream);
+
+
 
 //users routes
 app.post('/signup', signup);
 app.post('/login', login);
 app.post('/user/image', FBAuth, uploadImage);
 app.post('/user', FBAuth, addUserDetails);
+app.get('/user', FBAuth, getAuthenticatedUser);
 
 exports.api = functions.https.onRequest(app);
