@@ -23,14 +23,18 @@ exports.getAllBudcalls = (req, res) => {
 };
 
 exports.postOneBudcall = (req, res) => {
-
-    
+    if(req.body.body.trim() === '') {
+        return res.status(400).json({body: 'Body must not be empty'});
+    }
 
     const newBudcall = {
         body: req.body.body,
         userHandle: req.body.userHandle,
+        userImage: req.user.imageUrl,
+        createdAt: new Date().toISOString(),
+        likeCount: 0,
+        commentCount: 0
         //location: new firebase.firestore.GeoPoint(latitude, longitude),  
-        createdAt: new Date().toISOString()
         // dateSet: admin.firestore.Timestamp.fromDate(new Date())
     };
 
@@ -38,9 +42,9 @@ exports.postOneBudcall = (req, res) => {
         .collection('budcalls')
         .add(newBudcall)
         .then(doc => {
-            res.json({
-                message: `document ${doc.id} created successfully`
-            });
+            const resBudcall = newBudcall;
+            resBudcall.budcallId = doc.id;
+            res.json(resBudcall);
         })
         .catch(err => {
             res.status(500).json({
@@ -93,17 +97,20 @@ exports.commentOnBudcall = (req, res) => {
     const newComment = {
         body: req.body.body,
         createdAt: new Date().toISOString(),
-        budcallId: req.params.budcallID,
+        budcallId: req.params.budcallId,
         userHandle: req.user.handle,
         userImage: req.user.imageUrl
     };
 
-    db.doc(`/budcalls/${req.params.budcalls}`).get()
+    db.doc(`/budcalls/${req.params.budcallId}`).get()
     .then(doc => {
         if(!doc.exists){
-            return res.status(404).json({error: 'Scream not found'});
+            return res.status(404).json({error: 'Budcall not found'});
         }
 
+        return doc.ref.update({commentCount: doc.data().commentCount + 1});
+    })
+    .then(() => {
         return db.collection('comments').add(newComment);
     })
     .then(() => {
@@ -115,4 +122,122 @@ exports.commentOnBudcall = (req, res) => {
     });
 
 
+};
+
+//Like a budcall
+exports.likeBudcall = (req, res) => {
+const likeDocument = db.collection('likes').where('userHandle', '==', req.user.handle)
+.where('budcallId', '==', req.params.budcallId).limit(1);
+
+const budcallDocument = db.doc(`/budcalls/${req.params.budcallId}`);
+
+let budcallData = {};
+
+
+budcallDocument.get()
+.then(doc => {
+    if(doc.exists){
+        budcallData = doc.data();
+        budcallData.budcallId = doc.id;
+        return likeDocument.get();
+
+    }
+    else{
+        return res.status(404).json({error: 'Budcall not found'});
+    }
+})
+.then(data => {
+    if(data.empty){
+        return db.collection('likes').add({
+            budcallId: req.params.budcallId,
+            userHandle: req.user.handle
+        })
+        .then(() => {
+            budcallData.likeCount++;
+            return budcallDocument.update({likeCount: budcallData.likeCount});
+        })
+        .then(() => {
+            return res.json(budcallData);
+        });
+        
+    }
+    else{
+        return res.status(400).json({ error: 'Budcall already liked' });
+    }
+})
+.catch(err => {
+    console.error(err);
+    res.status(500).json({ error: err.code});
+});
+};
+
+exports.unlikeBudcall = (req, res) => {
+    const likeDocument = db.collection('likes').where('userHandle', '==', req.user.handle)
+.where('budcallId', '==', req.params.budcallId).limit(1);
+
+const budcallDocument = db.doc(`/budcalls/${req.params.budcallId}`);
+
+let budcallData = {};
+
+
+budcallDocument.get()
+.then(doc => {
+    if(doc.exists){
+        budcallData = doc.data();
+        budcallData.budcallId = doc.id;
+        return likeDocument.get();
+
+    }
+    else{
+        return res.status(404).json({error: 'Budcall not found'});
+    }
+})
+.then(data => {
+    if(data.empty){
+        return res.status(400).json({ error: 'Budcall already unliked' });
+
+        
+    }
+    else{
+        return db.doc(`/likes/${data.docs[0].id}`).delete()
+        .then(() => {
+            budcallData.likeCount--;
+            return budcallDocument.update({likeCount: budcallData.likeCount});
+        })
+        .then(() => {
+            res.json(budcallData);
+        });
+        
+    }
+})
+.catch((err) => {
+    console.error(err);
+    res.status(500).json({ error: err.code});
+});
+};
+
+//Delete budcall
+
+exports.deleteBudcall = (req, res) => {
+    const document = db.doc(`/budcalls/${req.params.budcallId}`);
+    document.get()
+    .then(doc => {
+        if(!doc.exists){
+            return res.status(404).json({error: 'Budcall not found'});
+        }
+        if(doc.data().userHandle !== req.user.handle){
+            return res.status(403).json({error: 'Unauthorized'});
+                }
+            else{
+                return document.delete();
+            }
+    })
+    .then(() => {
+        res.json({ message: 'Budcall deleted successfully'});
+    })
+    .catch(err => {
+        console.error(err);
+        return res.status(500).json({error: err.code});
+
+    });
 };
