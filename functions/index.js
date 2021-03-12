@@ -35,8 +35,6 @@ app.get('/budcall/:budcallId/like', FBAuth, likeBudcall);
 app.get('/budcall/:budcallId/unlike', FBAuth, unlikeBudcall);
 app.post('/budcall/:budcallId/comment', FBAuth, commentOnBudcall);
 
-
-
 //users routes
 app.post('/signup', signup);
 app.post('/login', login);
@@ -106,7 +104,7 @@ exports.createNotificationOnComment = functions
         });
 });
 
-exports.onUserImageChange = functions.region('us-central1').firestore.document('/users/{userId').
+exports.onUserImageChange = functions.region('us-central1').firestore.document('/users/{userId}').
 onUpdate((change) => {
     console.log(change.before.data());
     console.log(change.after.data());
@@ -116,29 +114,34 @@ onUpdate((change) => {
        return db.collection('budcalls').where('userHandle', '==', change.before.data().handle).get()
        .then((data) => {
            data.forEach(doc => {
-               const scream = db.doc(`/budcalls/${doc.id}`);
+               const budcall = db.doc(`/budcalls/${doc.id}`);
                batch.update(budcall, { userImage: change.after.data().imageUrl});
            });
            return batch.commit();
        });
-   }
+   } else return true;
 });
 
-exports.onBudcallDelete = functions.region('us-central1').firestore.document('/users/{userId').onDelete((snapshot, context) => {
+exports.onBudcallDelete = functions
+.region('us-central1')
+.firestore.document('/budcalls/{budcallId}')
+.onDelete((snapshot, context) => {
     const budcallId = context.params.budcallId;
     const batch = db.batch();
 
-    return db.collection('comments').where('budcallId', '==', budcallId).get()
+    return db
+    .collection('comments')
+    .where('budcallId', '==', budcallId).get()
     .then(data => {
         data.forEach(doc => {
             batch.delete(db.doc(`/comments/${doc.id}`));
         });
-        return db.collection('likes').where('budcallId', '==', budcallId);
+        return db.collection('likes').where('budcallId', '==', budcallId).get();
     }).then(data => {
         data.forEach(doc => {
             batch.delete(db.doc(`/likes/${doc.id}`));
         });
-        return db.collection('notifications').where('budcallId', '==', budcallId);
+        return db.collection('notifications').where('budcallId', '==', budcallId).get();
     })
     .then(data => {
         data.forEach(doc => {
