@@ -2,6 +2,8 @@
 
 GymBuds App, an app for connecting gym users and planning workouts. Currently in development.
 
+[Client-side code for the app here](https://github.com/cjrcodes/GymBuds-App-Client)
+
 Based on FreeCodeCamp's React and Firebase Social Media App Tutorial.
 
 Planned Features:
